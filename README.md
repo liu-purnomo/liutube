@@ -17,7 +17,7 @@ A desktop YouTube client built with Electron and the unofficial YouTube.js libra
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone git@github.com:liu-purnomo/liutube.git
 cd liutube
 ```
 
