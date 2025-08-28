@@ -40,6 +40,34 @@ npm start
 npm run build-icons
 ```
 
+## Building for Production
+
+Build the application into executable files:
+
+### Build for Current Platform
+```bash
+npm run build
+```
+
+### Build for Specific Platforms
+```bash
+npm run build-win    # Windows (.exe installer)
+npm run build-mac    # macOS (.dmg)
+npm run build-linux  # Linux (AppImage)
+npm run dist         # Build all platforms
+```
+
+### Output
+- **Windows**: `dist/LiuTube Setup 1.0.0.exe` - Installer
+- **Windows**: `dist/win-unpacked/LiuTube.exe` - Portable executable
+- **macOS**: `dist/LiuTube-1.0.0.dmg` - DMG installer
+- **Linux**: `dist/LiuTube-1.0.0.AppImage` - AppImage executable
+
+### Installation
+1. **Windows**: Run the `.exe` installer or use the portable version
+2. **macOS**: Open the `.dmg` file and drag to Applications
+3. **Linux**: Make the `.AppImage` executable and run it
+
 ## Technologies Used
 
 - **Electron** - Desktop app framework

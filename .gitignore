@@ -1,3 +1,7 @@
 .claude
 node_modules
 package-lock.json
+dist/win-unpacked
+dist/builder-debug.yml
+dist/builder-effective-config.yaml
+dist/latest.yml

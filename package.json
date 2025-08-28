@@ -6,6 +6,11 @@
   "scripts": {
     "start": "electron .",
     "build-icons": "node build-icon.js",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux",
+    "dist": "electron-builder --publish=never",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -14,9 +19,41 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "^37.4.0",
+    "electron-builder": "^26.0.12",
     "electron-icon-maker": "^0.0.5"
   },
   "dependencies": {
     "youtubei.js": "^15.0.1"
+  },
+  "build": {
+    "appId": "com.liu.liutube",
+    "productName": "LiuTube",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "renderer.js",
+      "preload.js",
+      "index.html",
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icons/win/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icons/mac/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icons/png/512x512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
