@@ -1,6 +1,6 @@
 {
   "name": "liutube",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "",
   "main": "main.js",
   "scripts": {
@@ -23,6 +23,7 @@
     "electron-icon-maker": "^0.0.5"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "youtubei.js": "^15.0.1"
   },
   "build": {
