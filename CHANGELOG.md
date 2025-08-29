@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2025-08-29
+
+### Fixed
+- **Direct Play Button UI**: Fixed z-index layering issue where the direct play button was being covered by the title bar
+  - Changed z-index from 20 to 2100 (above title bar's 2000)
+  - Repositioned button from `top: 15px` to `top: 45px` to avoid title bar overlap
+
+### Enhanced
+- **Direct Play Button Transparency**: Improved button visibility and user experience
+  - Reduced default opacity from 70% to 30% for less intrusive appearance
+  - Enhanced hover effects with full opacity (100%) and red highlight
+  - More transparent background (`rgba(0, 0, 0, 0.5)`) for subtler integration
+  - Improved border transparency for cleaner appearance
+
+### Improved
+- **Production Build**: Removed all debug console logging for cleaner production release
+  - Eliminated console.log statements while preserving essential error handling
+  - Optimized application performance by reducing unnecessary logging overhead
+
+### Documentation
+- **Comprehensive README Update**: Major documentation overhaul with detailed user guides
+  - Added detailed explanation of Direct Play Button functionality and usage
+  - Comprehensive download system documentation with troubleshooting guides
+  - Complete history management documentation including logic and behavior
+  - Enhanced installation and build instructions
+  - Added troubleshooting section with common issues and solutions
+  - Detailed feature explanations with usage examples
+
 ## [2.0.1] - 2025-08-29
 
 ### Added

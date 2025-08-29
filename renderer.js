@@ -163,6 +163,11 @@ class LiuTube {
         this.currentDownload = null;
         this.activeDownloads = new Map();
         this.historyManager = new HistoryManager();
+        this.currentVideos = [];
+        this.isLoadingMore = false;
+        this.hasMoreContent = true;
+        this.currentQuery = '';
+        this.isSearchMode = false;
         this.init();
     }
 
@@ -173,7 +178,6 @@ class LiuTube {
         this.loadTrendingVideos();
         // Make instance globally accessible for onclick handlers
         window.liuTube = this;
-        console.log('LiuTube initialized');
     }
 
     setupEventListeners() {
@@ -290,9 +294,16 @@ class LiuTube {
         const trendingGrid = document.getElementById('trendingGrid');
 
         if (!query) {
+            this.isSearchMode = false;
+            this.currentQuery = '';
             this.loadTrendingVideos();
             return;
         }
+
+        this.isSearchMode = true;
+        this.currentQuery = query;
+        this.currentVideos = [];
+        this.hasMoreContent = true;
 
         trendingGrid.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 50px;">Searching...</div>';
 
@@ -304,17 +315,86 @@ class LiuTube {
                 return;
             }
             
-            this.displayVideosInGrid(results.videos);
+            this.currentVideos = results.videos || [];
+            this.displayVideosInGrid(this.currentVideos);
         } catch (error) {
-            console.error('Search error:', error);
             trendingGrid.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 50px;">Search failed. Please try again.</div>';
         }
     }
 
     async loadMoreVideos() {
-        // For now, just load more trending content
-        // In a real app, you'd implement pagination
-        this.loadTrendingVideos();
+        if (this.isLoadingMore || !this.hasMoreContent) {
+            return;
+        }
+
+        this.isLoadingMore = true;
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        const originalText = loadMoreBtn.textContent;
+        loadMoreBtn.textContent = 'Loading...';
+        loadMoreBtn.disabled = true;
+
+        try {
+            let newVideos = [];
+            
+            if (this.isSearchMode && this.currentQuery) {
+                const results = await window.electronAPI.searchYoutube(this.currentQuery, 'video');
+                if (results && results.videos) {
+                    newVideos = results.videos.filter(video => 
+                        !this.currentVideos.some(existing => existing.id === video.id)
+                    );
+                }
+            } else {
+                const results = await window.electronAPI.getTrendingVideos();
+                if (results && results.videos) {
+                    newVideos = results.videos.filter(video => 
+                        !this.currentVideos.some(existing => existing.id === video.id)
+                    );
+                }
+                
+                if (!newVideos.length) {
+                    const fallbackQueries = [
+                        'popular videos today',
+                        'most viewed this week', 
+                        'trending now',
+                        'hot videos right now',
+                        'viral videos',
+                        'top videos'
+                    ];
+                    
+                    const randomQuery = fallbackQueries[Math.floor(Math.random() * fallbackQueries.length)];
+                    const searchResults = await window.electronAPI.searchYoutube(randomQuery, 'video');
+                    
+                    if (searchResults && searchResults.videos) {
+                        newVideos = searchResults.videos.filter(video => 
+                            !this.currentVideos.some(existing => existing.id === video.id)
+                        );
+                    }
+                }
+            }
+
+            if (newVideos.length > 0) {
+                this.currentVideos = [...this.currentVideos, ...newVideos];
+                this.appendVideosToGrid(newVideos);
+            } else {
+                this.hasMoreContent = false;
+                loadMoreBtn.textContent = 'No more videos';
+                setTimeout(() => {
+                    loadMoreBtn.style.display = 'none';
+                }, 2000);
+            }
+        } catch (error) {
+            loadMoreBtn.textContent = 'Failed to load more';
+            setTimeout(() => {
+                loadMoreBtn.textContent = originalText;
+                loadMoreBtn.disabled = false;
+            }, 2000);
+        } finally {
+            this.isLoadingMore = false;
+            if (this.hasMoreContent) {
+                loadMoreBtn.textContent = originalText;
+                loadMoreBtn.disabled = false;
+            }
+        }
     }
 
 
@@ -326,6 +406,9 @@ class LiuTube {
         const historyPage = document.getElementById('historyPage');
 
         try {
+            // Clean up any existing video elements first
+            this.cleanupVideoElements();
+            
             // Hide all pages and show video container
             homePage.style.display = 'none';
             if (historyPage) historyPage.style.display = 'none';
@@ -346,40 +429,46 @@ class LiuTube {
             this.showVideoLoading(videoData);
             
             // Always try YouTube embedded player first
-            const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&rel=0&modestbranding=1`;
+            const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&rel=0&modestbranding=1&enablejsapi=1`;
             youtubePlayer.src = embedUrl;
             youtubePlayer.style.display = 'block';
             videoPlayer.style.display = 'none';
             
-            console.log('Playing video via YouTube embed:', videoId);
             
             let fallbackTriggered = false;
+            let loadingHidden = false;
+            let videoLoadedSuccessfully = false;
             
-            // Simple fallback strategy - just wait and hide loading after reasonable time
-            setTimeout(() => {
-                if (!fallbackTriggered) {
-                    this.hideVideoLoading();
-                    console.log('Embed loading timeout reached, hiding loading overlay');
+            // Wait for iframe to load
+            youtubePlayer.onload = () => {
+                if (!loadingHidden) {
+                    setTimeout(() => {
+                        this.hideVideoLoading();
+                        loadingHidden = true;
+                        videoLoadedSuccessfully = true;
+                    }, 1500);
                 }
-            }, 4000);
+            };
+            
+            // Shorter timeout for better UX
+            setTimeout(() => {
+                if (!fallbackTriggered && !loadingHidden) {
+                    this.hideVideoLoading();
+                    loadingHidden = true;
+                }
+            }, 3000);
             
             // Only fallback to direct if embed explicitly fails
             youtubePlayer.onerror = async () => {
                 if (fallbackTriggered) return;
                 fallbackTriggered = true;
-                console.log('Embed failed with onerror, trying direct video...');
                 await this.tryDirectVideoPlayback(videoId, videoData);
             };
             
-            // Add a manual fallback button in case embed shows "Video unavailable"
-            setTimeout(() => {
-                if (!fallbackTriggered) {
-                    this.addFallbackButton(videoId, videoData);
-                }
-            }, 6000);
+            // Always show floating direct play option for all videos
+            this.showFloatingDirectPlayButton(videoId, videoData);
             
         } catch (error) {
-            console.error('Video playback error:', error);
             this.showHomePage();
         }
     }
@@ -423,20 +512,16 @@ class LiuTube {
             
             // Set up new error handler before setting src
             videoPlayer.onerror = () => {
-                console.log('Direct video playback failed');
                 this.showVideoError('Video failed to load. This is common with music videos due to copyright restrictions. Try downloading instead.', videoId, videoData);
             };
             
             videoPlayer.src = result.url;
             videoPlayer.play().catch(error => {
-                console.log('Video play failed:', error);
                 this.showVideoError('Video failed to load. This is common with music videos due to copyright restrictions. Try downloading instead.', videoId, videoData);
             });
             
-            console.log('Playing video directly:', result.title);
             
         } catch (error) {
-            console.error('Direct video playback error:', error);
             this.showVideoError('Unable to play this video. It may be restricted or unavailable. Try downloading instead.', videoId, videoData);
         }
     }
@@ -463,19 +548,21 @@ class LiuTube {
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            background: #1a1a1a;
+            background: rgba(26, 26, 26, 0.95);
             color: white;
             z-index: 5;
+            backdrop-filter: blur(5px);
         `;
         
         loadingOverlay.innerHTML = `
-            <div style="text-align: center;">
-                <div style="width: 50px; height: 50px; border: 3px solid #333; border-top: 3px solid #4CAF50; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-                <h3 style="margin-bottom: 10px;">Loading Video...</h3>
+            <div style="text-align: center; max-width: 400px; padding: 20px;">
+                <div style="width: 60px; height: 60px; border: 4px solid #333; border-top: 4px solid #ff0000; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 25px;"></div>
+                <h3 style="margin-bottom: 15px; font-size: 1.2em;">Loading Video...</h3>
                 ${videoData ? `
-                    <p style="color: #aaa; margin: 5px 0;">${this.escapeHtml(videoData.title || 'Unknown Title')}</p>
-                    <p style="color: #888; font-size: 0.9em;">${this.escapeHtml(videoData.author || 'Unknown Channel')}</p>
+                    <p style="color: #ccc; margin: 10px 0; line-height: 1.4; font-size: 1em;">${this.escapeHtml(videoData.title || 'Unknown Title')}</p>
+                    <p style="color: #999; font-size: 0.9em; margin-bottom: 15px;">${this.escapeHtml(videoData.author || 'Unknown Channel')}</p>
                 ` : ''}
+                <p style="color: #666; font-size: 0.8em;">Please wait while the video loads...</p>
             </div>
             <style>
                 @keyframes spin {
@@ -495,41 +582,51 @@ class LiuTube {
         }
     }
 
-    addFallbackButton(videoId, videoData) {
+    showFloatingDirectPlayButton(videoId, videoData) {
         const videoContainer = document.getElementById('videoContainer');
         
         // Check if button already exists
-        if (document.getElementById('fallbackButton')) return;
+        if (document.getElementById('floatingDirectPlay')) return;
         
-        // Create fallback button overlay
-        const fallbackButton = document.createElement('div');
-        fallbackButton.id = 'fallbackButton';
-        fallbackButton.style.cssText = `
+        // Create floating direct play button
+        const floatingButton = document.createElement('div');
+        floatingButton.id = 'floatingDirectPlay';
+        floatingButton.style.cssText = `
             position: absolute;
-            bottom: 20px;
-            right: 20px;
-            z-index: 15;
+            top: 45px;
+            left: 15px;
+            z-index: 2100;
+            opacity: 0.3;
+            transition: all 0.3s ease;
         `;
         
-        fallbackButton.innerHTML = `
+        floatingButton.innerHTML = `
             <button onclick="window.liuTube.tryDirectVideoPlayback('${videoId}', ${JSON.stringify(videoData).replace(/"/g, '&quot;')})" 
                     style="
-                        padding: 10px 15px; 
-                        background: rgba(76, 175, 80, 0.9); 
+                        padding: 8px 12px; 
+                        background: rgba(0, 0, 0, 0.5); 
                         color: white; 
-                        border: none; 
-                        border-radius: 5px; 
+                        border: 1px solid rgba(255, 255, 255, 0.2);
+                        border-radius: 20px; 
                         cursor: pointer; 
-                        font-size: 14px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-                    ">
-                Video not loading? Try Direct Play
+                        font-size: 12px;
+                        font-weight: 500;
+                        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+                        transition: all 0.3s ease;
+                        backdrop-filter: blur(10px);
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                    "
+                    onmouseover="this.parentElement.style.opacity='1'; this.style.background='rgba(255, 0, 0, 0.9)'; this.style.borderColor='rgba(255, 0, 0, 0.7)';"
+                    onmouseout="this.parentElement.style.opacity='0.3'; this.style.background='rgba(0, 0, 0, 0.5)'; this.style.borderColor='rgba(255, 255, 255, 0.2)';">
+                <span style="font-size: 10px;">🎬</span>
+                <span>Direct</span>
             </button>
         `;
         
-        videoContainer.appendChild(fallbackButton);
+        videoContainer.appendChild(floatingButton);
         
-        console.log('Added fallback button for video:', videoId);
     }
 
     showVideoError(message, videoId, videoData) {
@@ -608,39 +705,42 @@ class LiuTube {
         if (historyPage) historyPage.style.display = 'none';
         
         // Clean up video elements properly
+        this.cleanupVideoElements();
+        
+    }
+
+    cleanupVideoElements() {
         const youtubePlayer = document.getElementById('youtubePlayer');
         const videoPlayer = document.getElementById('videoPlayer');
-        const errorOverlay = document.getElementById('videoErrorOverlay');
+        const videoContainer = document.getElementById('videoContainer');
         
         if (youtubePlayer) {
             youtubePlayer.src = '';
             youtubePlayer.style.display = 'none';
+            youtubePlayer.onload = null;
+            youtubePlayer.onerror = null;
         }
         
         if (videoPlayer) {
             videoPlayer.src = '';
             videoPlayer.pause();
             videoPlayer.style.display = 'none';
-            // Clear any error handlers
             videoPlayer.onerror = null;
         }
         
-        // Remove error overlay if it exists
-        if (errorOverlay) {
-            errorOverlay.remove();
-        }
+        // Remove all overlays and UI elements
+        const elementsToRemove = [
+            'videoErrorOverlay',
+            'videoLoadingOverlay', 
+            'fallbackButton'
+        ];
         
-        // Remove loading overlay if it exists
-        const loadingOverlay = document.getElementById('videoLoadingOverlay');
-        if (loadingOverlay) {
-            loadingOverlay.remove();
-        }
-        
-        // Remove fallback button if it exists
-        const fallbackButton = document.getElementById('fallbackButton');
-        if (fallbackButton) {
-            fallbackButton.remove();
-        }
+        elementsToRemove.forEach(elementId => {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.remove();
+            }
+        });
         
         // Ensure video container has correct structure
         if (!youtubePlayer || !videoPlayer) {
@@ -649,8 +749,6 @@ class LiuTube {
                 <video id="videoPlayer" controls style="display: none; width: 100%; height: 100%; background: black;"></video>
             `;
         }
-        
-        console.log('Returned to home page, video state cleaned');
     }
 
     showHistoryPage() {
@@ -741,13 +839,23 @@ class LiuTube {
 
     async loadTrendingVideos() {
         const trendingGrid = document.getElementById('trendingGrid');
+        const loadMoreBtn = document.getElementById('loadMoreBtn');
+        
+        this.isSearchMode = false;
+        this.currentQuery = '';
+        this.currentVideos = [];
+        this.hasMoreContent = true;
+        
+        // Reset and show load more button
+        loadMoreBtn.style.display = 'block';
+        loadMoreBtn.textContent = 'Load More';
+        loadMoreBtn.disabled = false;
         
         try {
             // Search for popular/trending content
             const results = await window.electronAPI.getTrendingVideos();
             
             if (results.error || !results.videos) {
-                console.error('Trending API failed, falling back to search');
                 
                 // Fallback to curated search terms for better results
                 const fallbackQueries = [
@@ -765,17 +873,16 @@ class LiuTube {
                     return;
                 }
                 
-                console.log('Using fallback search with query:', randomQuery);
-                this.displayVideosInGrid(searchResults.videos);
+                this.currentVideos = searchResults.videos || [];
+                this.displayVideosInGrid(this.currentVideos);
                 return;
             }
             
-            console.log('Loaded', results.videos.length, 'trending videos from API');
 
-            this.displayVideosInGrid(results.videos);
+            this.currentVideos = results.videos || [];
+            this.displayVideosInGrid(this.currentVideos);
             
         } catch (error) {
-            console.error('Trending videos error:', error);
             trendingGrid.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 50px;">Failed to load trending videos</div>';
         }
     }
@@ -791,46 +898,57 @@ class LiuTube {
         trendingGrid.innerHTML = '';
         
         videos.slice(0, 12).forEach(video => {
-            if (!video.id || !video.title) return;
-
-            const videoCard = document.createElement('div');
-            videoCard.className = 'video-card';
-            videoCard.innerHTML = `
-                <div class="thumbnail-container">
-                    ${video.thumbnail ? `<img src="${video.thumbnail}" alt="${this.escapeHtml(video.title)}" class="thumbnail-placeholder">` : '<div class="thumbnail-placeholder"></div>'}
-                    <div class="thumbnail-overlay">
-                        <button class="icon-btn" title="Play">
-                            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
-                        </button>
-                        <button class="icon-btn" title="Download" onclick="event.stopPropagation(); window.liuTube.downloadVideo('${video.id}', '${this.escapeHtml(video.title)}')">
-                            <svg viewBox="0 0 24 24">
-                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="card-info">
-                    <h4 class="card-title">${this.escapeHtml(video.title)}</h4>
-                    <p class="card-channel">${this.escapeHtml(video.author || 'Unknown Channel')}</p>
-                </div>
-            `;
-
-            videoCard.addEventListener('click', () => {
-                this.playVideo(video.id, {
-                    title: video.title,
-                    author: video.author || 'Unknown Channel',
-                    thumbnail: video.thumbnail,
-                    duration: video.duration
-                });
-            });
-
-            trendingGrid.appendChild(videoCard);
+            this.createVideoCard(video, trendingGrid);
         });
+    }
+
+    appendVideosToGrid(videos) {
+        const trendingGrid = document.getElementById('trendingGrid');
+        
+        videos.slice(0, 12).forEach(video => {
+            this.createVideoCard(video, trendingGrid);
+        });
+    }
+
+    createVideoCard(video, container) {
+        if (!video.id || !video.title) return;
+
+        const videoCard = document.createElement('div');
+        videoCard.className = 'video-card';
+        videoCard.innerHTML = `
+            <div class="thumbnail-container">
+                ${video.thumbnail ? `<img src="${video.thumbnail}" alt="${this.escapeHtml(video.title)}" class="thumbnail-placeholder">` : '<div class="thumbnail-placeholder"></div>'}
+                <div class="thumbnail-overlay">
+                    <button class="icon-btn" title="Play">
+                        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                    </button>
+                    <button class="icon-btn" title="Download" onclick="event.stopPropagation(); window.liuTube.downloadVideo('${video.id}', '${this.escapeHtml(video.title)}')">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="card-info">
+                <h4 class="card-title">${this.escapeHtml(video.title)}</h4>
+                <p class="card-channel">${this.escapeHtml(video.author || 'Unknown Channel')}</p>
+            </div>
+        `;
+
+        videoCard.addEventListener('click', () => {
+            this.playVideo(video.id, {
+                title: video.title,
+                author: video.author || 'Unknown Channel',
+                thumbnail: video.thumbnail,
+                duration: video.duration
+            });
+        });
+
+        container.appendChild(videoCard);
     }
 
     async downloadVideo(videoId, title) {
         try {
-            console.log('Starting download for:', videoId, title);
             
             // Generate unique download ID
             const downloadId = `${videoId}-${Date.now()}`;
@@ -846,7 +964,6 @@ class LiuTube {
                 throw new Error(result.error);
             }
             
-            console.log('Download info received:', result);
             
             // Create download item in UI
             this.createDownloadItem(downloadId, title, result.filesize);
@@ -855,8 +972,6 @@ class LiuTube {
             const downloadsPath = window.electronAPI.getDownloadsPath();
             const filepath = window.electronAPI.joinPath(downloadsPath, result.filename);
             
-            console.log('Download path:', filepath);
-            console.log('Download URL:', result.downloadUrl);
             
             // Store download info
             this.activeDownloads.set(downloadId, {
@@ -879,22 +994,18 @@ class LiuTube {
                 // Method 1: Try simple fetch download first
                 downloadResult = await window.electronAPI.downloadFileSimple(videoId, filepath);
             } catch (error) {
-                console.log('Simple download failed, trying ytdl-core download...', error);
                 try {
                     // Method 2: Try ytdl-core download
                     downloadResult = await window.electronAPI.downloadFileYtdl(videoId, filepath);
                 } catch (ytdlError) {
-                    console.log('YTDL download failed, trying URL download...', ytdlError);
                     try {
                         // Method 3: Try URL-based download
                         downloadResult = await window.electronAPI.downloadFile(result.downloadUrl, filepath);
                     } catch (urlError) {
-                        console.log('URL download failed, trying stream download...', urlError);
                         try {
                             // Method 4: Try stream download
                             downloadResult = await window.electronAPI.downloadFileStream(videoId, filepath);
                         } catch (streamError) {
-                            console.error('All download methods failed:', streamError);
                             throw streamError;
                         }
                     }
@@ -906,7 +1017,6 @@ class LiuTube {
             
             if (downloadResult.success) {
                 this.updateDownloadStatus(downloadId, 'completed');
-                console.log('Download completed successfully:', downloadResult.filepath);
                 
                 // Auto-remove completed downloads after 10 seconds
                 setTimeout(() => {
@@ -917,7 +1027,6 @@ class LiuTube {
             }
             
         } catch (error) {
-            console.error('Download failed:', error);
             this.updateDownloadStatus(downloadId, 'failed', error.message);
             
             // Auto-remove failed downloads after 5 seconds
@@ -1025,7 +1134,6 @@ class LiuTube {
 
     setupDownloadHandlers() {
         // Download progress handlers are set up per download in downloadVideo method
-        console.log('Download handlers ready');
     }
 
     escapeHtml(text) {

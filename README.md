@@ -1,19 +1,117 @@
 # LiuTube
 
-A desktop YouTube client built with Electron and the unofficial YouTube.js library.
+A modern desktop YouTube client built with Electron that provides seamless video streaming, downloading capabilities, and watch history management.
 
 ## Features
 
-- Desktop YouTube client experience
-- Built with Electron for cross-platform compatibility
-- Uses youtubei.js for YouTube API interactions
+### 🎬 Video Playback
+- **Dual Playback Modes**: Embedded YouTube player and direct video streaming
+- **Smart Fallback System**: Automatic fallback between playback methods
+- **Direct Play Button**: Transparent floating button for direct video access when embedded playback fails
 
-## Prerequisites
+### 📱 User Interface
+- **Modern Dark UI**: Clean, YouTube-inspired interface
+- **Always on Top**: Pin window to stay above other applications
+- **Trending Videos**: Curated trending content on homepage
+- **Search Functionality**: Real-time search with auto-suggestions
 
-- Node.js (v14 or higher)
-- npm or yarn
+### 📥 Download Manager
+- **Multi-Format Downloads**: Support for various video qualities and formats
+- **Progress Tracking**: Real-time download progress with speed indicators
+- **Multiple Download Methods**: Automatic fallback through different download engines
+- **Download Queue**: Manage multiple downloads simultaneously
+
+### 📚 History Management
+- **Automatic History Tracking**: Records all watched videos with metadata
+- **Search History**: Find previously watched content quickly
+- **Watch Statistics**: Track view counts and watch patterns
+- **History Control**: Clear individual entries or entire history
+
+## Video Playback Logic
+
+### Playback Modes
+
+1. **Embedded YouTube Player** (Default)
+   - Uses official YouTube embed
+   - Supports all YouTube features
+   - Best compatibility with most content
+
+2. **Direct Video Streaming** (Fallback/Manual)
+   - Direct video URL streaming
+   - Used when embedded player fails
+   - Accessible via floating "Direct" button
+
+### When Videos Show "Unavailable"
+
+If you encounter "Video Unavailable" messages:
+
+1. **Click the "Direct" Button**: Look for the semi-transparent "Direct" button in the top-left corner of the video player
+2. **Try Download Instead**: Use the download feature as an alternative
+3. **Common Causes**:
+   - Age-restricted content
+   - Music videos with copyright restrictions
+   - Region-blocked content
+   - Premium/paid content
+
+### Direct Play Button
+- **Location**: Top-left corner of video player
+- **Transparency**: 30% opacity by default, becomes fully visible on hover
+- **Function**: Attempts direct video streaming when embedded player fails
+- **Appearance**: Red highlight on hover with 🎬 icon
+
+## Download System
+
+### Download Process
+1. **Multiple Fallback Methods**: 
+   - Simple fetch download
+   - ytdl-core extraction  
+   - Direct URL download
+   - Stream-based download
+
+2. **Download Locations**: Files are saved to your system's Downloads folder
+
+3. **Supported Content**: 
+   - Regular videos
+   - Music videos (often downloads work even when streaming doesn't)
+   - Most YouTube content types
+
+### Download Manager
+- **Real-time Progress**: Shows download speed, progress percentage, and file size
+- **Auto-cleanup**: Completed downloads auto-remove after 10 seconds
+- **Error Handling**: Failed downloads auto-remove after 5 seconds
+- **Cancellation**: Stop downloads in progress (where supported)
+
+## History Management
+
+### What Gets Recorded
+- **Video Information**: Title, channel name, thumbnail, duration
+- **Timestamps**: When the video was accessed
+- **Watch Count**: How many times you've watched each video
+- **Metadata**: Additional video details for future reference
+
+### When History is Created
+- **On Video Play**: History entry created when you click play on any video
+- **Update on Re-watch**: Existing entries get updated timestamp and incremented watch count
+- **Automatic**: No manual action required
+
+### When History is Removed
+- **Manual Removal**: Click "Remove" button on individual history items
+- **Clear All**: Use "Clear All" button to wipe entire history
+- **Auto-cleanup**: History is limited to 100 most recent items (older entries auto-removed)
+- **Search Filtering**: Use search bar to filter history by title or channel name
+
+### History Statistics
+- **Total Videos**: Count of unique videos in your history
+- **Total Channels**: Number of different channels you've watched
+- **Watch Patterns**: Most watched channels and recent activity
 
 ## Installation
+
+### Prerequisites
+- Node.js (v16 or higher)
+- npm or yarn
+
+### Development Setup
 
 1. Clone the repository:
 ```bash
@@ -26,75 +124,121 @@ cd liutube
 npm install
 ```
 
-## Usage
-
-Start the application:
+3. Start the application:
 ```bash
 npm start
 ```
 
-## Development
-
-### Building Icons
-```bash
-npm run build-icons
-```
-
 ## Building for Production
 
-Build the application into executable files:
+### Build Commands
 
-### Build for Current Platform
 ```bash
+# Build for current platform
 npm run build
-```
 
-### Build for Specific Platforms
-```bash
+# Platform-specific builds
 npm run build-win    # Windows (.exe installer)
 npm run build-mac    # macOS (.dmg)
 npm run build-linux  # Linux (AppImage)
 npm run dist         # Build all platforms
 ```
 
-### Output
-- **Windows**: `dist/LiuTube Setup 1.0.0.exe` - Installer
+### Build Outputs
+- **Windows**: `dist/LiuTube Setup 2.0.2.exe` - NSIS Installer
 - **Windows**: `dist/win-unpacked/LiuTube.exe` - Portable executable
-- **macOS**: `dist/LiuTube-1.0.0.dmg` - DMG installer
-- **Linux**: `dist/LiuTube-1.0.0.AppImage` - AppImage executable
+- **macOS**: `dist/LiuTube-2.0.2.dmg` - DMG installer
+- **Linux**: `dist/LiuTube-2.0.2.AppImage` - AppImage executable
 
-### Installation
+### Installation Instructions
 1. **Windows**: Run the `.exe` installer or use the portable version
-2. **macOS**: Open the `.dmg` file and drag to Applications
-3. **Linux**: Make the `.AppImage` executable and run it
+2. **macOS**: Open the `.dmg` file and drag to Applications folder
+3. **Linux**: Make the `.AppImage` executable (`chmod +x LiuTube-2.0.2.AppImage`) and run
 
-## Technologies Used
+## Troubleshooting
 
-- **Electron** - Desktop app framework
-- **youtubei.js** - Unofficial YouTube API library
-- **JavaScript** - Primary development language
+### Video Won't Play
+1. Try the **Direct** button (floating button in video player)
+2. Check your internet connection
+3. Try downloading the video instead
+4. Some content may be region-restricted or require age verification
+
+### Downloads Failing
+- Downloads use multiple fallback methods automatically
+- Some premium/restricted content may not be downloadable
+- Check your Downloads folder for completed files
+
+### History Not Saving
+- History is stored locally in your browser's localStorage
+- Clearing application data will remove history
+- History has a 100-item limit (oldest items auto-removed)
+
+## Keyboard Shortcuts
+
+- **Escape**: Return to home page from video player
+- **Home**: Navigate to trending videos page
+- **History**: Access watch history
+
+## Technologies
+
+- **Electron**: Desktop application framework
+- **youtubei.js**: YouTube API interactions  
+- **@distube/ytdl-core**: Video download capabilities
+- **HTML/CSS/JavaScript**: Frontend technologies
 
 ## Project Structure
 
-- `main.js` - Main Electron process
-- `renderer.js` - Renderer process logic
-- `preload.js` - Preload script for secure context bridging
-- `index.html` - Main application UI
-- `assets/` - Application assets and resources
-- `build/` - Build output directory
-- `icons/` - Application icons
+```
+liutube/
+├── main.js           # Main Electron process
+├── renderer.js       # Frontend application logic
+├── preload.js        # Secure context bridge
+├── index.html        # Application UI
+├── assets/           # Application resources
+├── build/            # Build configuration and icons
+└── dist/             # Build output directory
+```
+
+## Version History
+
+### 2.0.2 (Current)
+- Enhanced direct play button with improved transparency and positioning
+- Fixed z-index issues with floating UI elements
+- Improved video playback fallback logic
+- Removed debug logging for production
+- Enhanced user documentation
+
+### 2.0.1
+- Enhanced video playback with real trending API
+- Robust download manager with multiple fallback methods
+- Comprehensive history management system
+- Modern UI improvements
+
+### 2.0.0
+- Major UI overhaul with modern dark theme
+- Download functionality with progress tracking
+- History management system
+- Improved video playback reliability
 
 ## License
 
-ISC
+ISC License - See LICENSE file for details
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Version
+## Support
 
-Current version: 1.0.0
+For issues, feature requests, or questions:
+1. Check existing issues on GitHub
+2. Create a new issue with detailed description
+3. Include system information and steps to reproduce
+
+---
+
+**Current Version**: 2.0.2
