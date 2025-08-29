@@ -126,16 +126,67 @@ ipcMain.handle('get-video-info', async (event, videoId) => {
   if (!youtube) return { error: 'YouTube not initialized' };
   
   try {
-    const info = await youtube.getInfo(videoId);
-    const format = info.chooseFormat({ quality: 'best', type: 'video+audio' });
+    // Try to get video info with additional options for restricted content
+    const info = await youtube.getInfo(videoId, {
+      client: 'ANDROID'  // Android client can bypass some restrictions
+    });
+    
+    // Check if video is available
+    if (!info.basic_info || info.basic_info.is_private || info.basic_info.is_unlisted === null) {
+      return { error: 'Video unavailable or restricted' };
+    }
+    
+    // Try multiple format selection strategies for music videos
+    let format = null;
+    
+    // Strategy 1: Try best video+audio format
+    format = info.chooseFormat({ quality: 'best', type: 'video+audio' });
+    
+    // Strategy 2: If no format, try audio-only for music
+    if (!format || !format.url) {
+      format = info.chooseFormat({ quality: 'best', type: 'audio' });
+    }
+    
+    // Strategy 3: Try any available format
+    if (!format || !format.url) {
+      const allFormats = [
+        ...(info.streaming_data?.formats || []),
+        ...(info.streaming_data?.adaptive_formats || [])
+      ];
+      format = allFormats.find(f => f.url);
+    }
+    
+    // Check for age restriction or other blocks
+    if (info.playability_status?.status === 'LOGIN_REQUIRED') {
+      return { error: 'Video requires login (age-restricted)' };
+    }
+    
+    if (info.playability_status?.status === 'UNPLAYABLE') {
+      return { error: 'Video unplayable: ' + (info.playability_status.reason || 'Unknown reason') };
+    }
+    
     return { 
       title: info.basic_info.title,
       url: format?.url,
-      author: info.basic_info.author
+      author: info.basic_info.author?.name || info.basic_info.author?.text || info.basic_info.channel?.name || 'Unknown Channel',
+      isMusic: info.basic_info.category === 'Music' || info.basic_info.title?.toLowerCase().includes('music'),
+      status: info.playability_status?.status
     };
   } catch (error) {
     console.error('Video info error:', error);
-    return { error: error.message };
+    
+    // Try alternative method for restricted videos
+    try {
+      const info = await youtube.getBasicInfo(videoId);
+      return {
+        title: info.basic_info.title,
+        url: null,
+        author: info.basic_info.author?.name || 'Unknown Channel',
+        error: 'Video playback restricted - try downloading instead'
+      };
+    } catch (altError) {
+      return { error: 'Video unavailable: ' + error.message };
+    }
   }
 });
 
@@ -158,6 +209,51 @@ ipcMain.handle('get-channel-videos', async (event, channelId) => {
   } catch (error) {
     console.error('Channel videos error:', error);
     return { error: error.message };
+  }
+});
+
+ipcMain.handle('get-trending-videos', async (event) => {
+  if (!youtube) return { error: 'YouTube not initialized' };
+  
+  try {
+    // Get trending videos from YouTube.js
+    const trending = await youtube.getTrending();
+    
+    const videos = trending.videos.slice(0, 20).map(video => ({
+      id: video.id,
+      title: video.title?.text || video.title,
+      author: video.author?.name || video.author?.text || video.channel?.name || 'Unknown Channel',
+      duration: video.duration?.text || '',
+      thumbnail: video.thumbnails?.[0]?.url || '',
+      views: video.view_count?.text || video.views?.text || ''
+    }));
+    
+    return { videos };
+  } catch (error) {
+    console.error('Trending videos error:', error);
+    
+    // Fallback to popular search if trending API fails
+    try {
+      const searchResults = await youtube.search('', { 
+        type: 'video',
+        sort_by: 'view_count',
+        upload_date: 'this_week'
+      });
+      
+      const videos = searchResults.videos.slice(0, 20).map(video => ({
+        id: video.id,
+        title: video.title?.text || video.title,
+        author: video.author?.name || video.author?.text || video.channel?.name || 'Unknown Channel',
+        duration: video.duration?.text || '',
+        thumbnail: video.thumbnails?.[0]?.url || '',
+        views: video.view_count?.text || video.views?.text || ''
+      }));
+      
+      return { videos };
+    } catch (fallbackError) {
+      console.error('Fallback trending search also failed:', fallbackError);
+      return { error: fallbackError.message };
+    }
   }
 });
 

@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2025-08-29
+
+### Added
+- **Real YouTube Trending API**: Implemented proper YouTube trending videos instead of search-based results
+  - Added `getTrendingVideos()` API method in preload.js
+  - Added `get-trending-videos` handler in main.js with multiple fallback strategies
+  - Smart fallback to curated search queries if trending API fails
+
+### Improved
+- **Video Playback Logic**: Enhanced video loading and error handling
+  - Added proper loading states with spinner and video information
+  - Implemented smart fallback timing (embed-first approach for all videos)
+  - Added manual "Try Direct Play" button for problematic videos
+  - Fixed premature "Video unavailable" errors by allowing proper load time
+  - Better state management to prevent UI freezing and navigation issues
+
+- **Music Video Handling**: Improved copyright-restricted content support
+  - Enhanced error messages with specific guidance for music/restricted videos
+  - Better detection and handling of age-restricted and region-blocked content
+  - Multiple format selection strategies for music videos
+
+- **User Experience**: Refined interface responsiveness
+  - Fixed navigation issues when returning from video player
+  - Proper cleanup of video states, loading overlays, and error messages
+  - Improved error messaging with actionable suggestions (download options)
+
+### Fixed
+- **Video Loading**: Resolved issues with video playback state management
+- **Navigation**: Fixed UI becoming unresponsive after video errors
+- **Trending Content**: Replaced artificial keyword searches with real trending data
+- **Error Handling**: Prevented premature fallback before videos had time to load
+
 ## [2.0.0] - 2025-08-29
 
 ### Added

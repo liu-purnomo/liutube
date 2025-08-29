@@ -342,7 +342,10 @@ class LiuTube {
                 });
             }
             
-            // Try YouTube embedded player first
+            // Show loading state
+            this.showVideoLoading(videoData);
+            
+            // Always try YouTube embedded player first
             const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&rel=0&modestbranding=1`;
             youtubePlayer.src = embedUrl;
             youtubePlayer.style.display = 'block';
@@ -350,22 +353,30 @@ class LiuTube {
             
             console.log('Playing video via YouTube embed:', videoId);
             
-            // Fallback to direct video if embed fails
-            youtubePlayer.onerror = async () => {
-                console.log('Embed failed, trying direct video...');
-                
-                const result = await window.electronAPI.getVideoInfo(videoId);
-                
-                if (result.error || !result.url) {
-                    throw new Error('Failed to get video URL');
+            let fallbackTriggered = false;
+            
+            // Simple fallback strategy - just wait and hide loading after reasonable time
+            setTimeout(() => {
+                if (!fallbackTriggered) {
+                    this.hideVideoLoading();
+                    console.log('Embed loading timeout reached, hiding loading overlay');
                 }
-                
-                youtubePlayer.style.display = 'none';
-                videoPlayer.style.display = 'block';
-                videoPlayer.src = result.url;
-                videoPlayer.play();
-                console.log('Playing video directly:', result.title);
+            }, 4000);
+            
+            // Only fallback to direct if embed explicitly fails
+            youtubePlayer.onerror = async () => {
+                if (fallbackTriggered) return;
+                fallbackTriggered = true;
+                console.log('Embed failed with onerror, trying direct video...');
+                await this.tryDirectVideoPlayback(videoId, videoData);
             };
+            
+            // Add a manual fallback button in case embed shows "Video unavailable"
+            setTimeout(() => {
+                if (!fallbackTriggered) {
+                    this.addFallbackButton(videoId, videoData);
+                }
+            }, 6000);
             
         } catch (error) {
             console.error('Video playback error:', error);
@@ -373,13 +384,273 @@ class LiuTube {
         }
     }
 
+    async tryDirectVideoPlayback(videoId, videoData) {
+        const youtubePlayer = document.getElementById('youtubePlayer');
+        const videoPlayer = document.getElementById('videoPlayer');
+        
+        // Hide loading overlay when starting direct playback attempt
+        this.hideVideoLoading();
+        
+        try {
+            const result = await window.electronAPI.getVideoInfo(videoId);
+            
+            if (result.error) {
+                // Show specific error messages for music/restricted content
+                let errorMsg = result.error;
+                if (result.error.includes('age-restricted')) {
+                    errorMsg = 'This video is age-restricted and cannot be played directly. Try downloading instead.';
+                } else if (result.error.includes('unplayable')) {
+                    errorMsg = 'This video cannot be played (possibly region-restricted or music). Try downloading instead.';
+                } else if (result.error.includes('restricted')) {
+                    errorMsg = 'This video has playback restrictions. You can still download it.';
+                }
+                
+                this.showVideoError(errorMsg, videoId, videoData);
+                return;
+            }
+            
+            if (!result.url) {
+                this.showVideoError('Video URL not available. This often happens with music videos due to copyright restrictions. Try downloading instead.', videoId, videoData);
+                return;
+            }
+            
+            // Switch to direct video player
+            youtubePlayer.style.display = 'none';
+            videoPlayer.style.display = 'block';
+            
+            // Clear any existing error handlers
+            videoPlayer.onerror = null;
+            
+            // Set up new error handler before setting src
+            videoPlayer.onerror = () => {
+                console.log('Direct video playback failed');
+                this.showVideoError('Video failed to load. This is common with music videos due to copyright restrictions. Try downloading instead.', videoId, videoData);
+            };
+            
+            videoPlayer.src = result.url;
+            videoPlayer.play().catch(error => {
+                console.log('Video play failed:', error);
+                this.showVideoError('Video failed to load. This is common with music videos due to copyright restrictions. Try downloading instead.', videoId, videoData);
+            });
+            
+            console.log('Playing video directly:', result.title);
+            
+        } catch (error) {
+            console.error('Direct video playback error:', error);
+            this.showVideoError('Unable to play this video. It may be restricted or unavailable. Try downloading instead.', videoId, videoData);
+        }
+    }
+
+    showVideoLoading(videoData) {
+        const videoContainer = document.getElementById('videoContainer');
+        
+        // Remove any existing loading overlay
+        const existingLoading = document.getElementById('videoLoadingOverlay');
+        if (existingLoading) {
+            existingLoading.remove();
+        }
+        
+        // Create loading overlay
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'videoLoadingOverlay';
+        loadingOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a1a;
+            color: white;
+            z-index: 5;
+        `;
+        
+        loadingOverlay.innerHTML = `
+            <div style="text-align: center;">
+                <div style="width: 50px; height: 50px; border: 3px solid #333; border-top: 3px solid #4CAF50; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+                <h3 style="margin-bottom: 10px;">Loading Video...</h3>
+                ${videoData ? `
+                    <p style="color: #aaa; margin: 5px 0;">${this.escapeHtml(videoData.title || 'Unknown Title')}</p>
+                    <p style="color: #888; font-size: 0.9em;">${this.escapeHtml(videoData.author || 'Unknown Channel')}</p>
+                ` : ''}
+            </div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+        
+        videoContainer.appendChild(loadingOverlay);
+    }
+
+    hideVideoLoading() {
+        const loadingOverlay = document.getElementById('videoLoadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.remove();
+        }
+    }
+
+    addFallbackButton(videoId, videoData) {
+        const videoContainer = document.getElementById('videoContainer');
+        
+        // Check if button already exists
+        if (document.getElementById('fallbackButton')) return;
+        
+        // Create fallback button overlay
+        const fallbackButton = document.createElement('div');
+        fallbackButton.id = 'fallbackButton';
+        fallbackButton.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 15;
+        `;
+        
+        fallbackButton.innerHTML = `
+            <button onclick="window.liuTube.tryDirectVideoPlayback('${videoId}', ${JSON.stringify(videoData).replace(/"/g, '&quot;')})" 
+                    style="
+                        padding: 10px 15px; 
+                        background: rgba(76, 175, 80, 0.9); 
+                        color: white; 
+                        border: none; 
+                        border-radius: 5px; 
+                        cursor: pointer; 
+                        font-size: 14px;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                    ">
+                Video not loading? Try Direct Play
+            </button>
+        `;
+        
+        videoContainer.appendChild(fallbackButton);
+        
+        console.log('Added fallback button for video:', videoId);
+    }
+
+    showVideoError(message, videoId, videoData) {
+        const videoContainer = document.getElementById('videoContainer');
+        const youtubePlayer = document.getElementById('youtubePlayer');
+        const videoPlayer = document.getElementById('videoPlayer');
+        
+        // Clear video sources and stop playback
+        youtubePlayer.src = '';
+        videoPlayer.src = '';
+        videoPlayer.pause();
+        
+        // Hide video elements but keep them in DOM
+        youtubePlayer.style.display = 'none';
+        videoPlayer.style.display = 'none';
+        
+        // Create or update error overlay (don't replace the container)
+        let errorOverlay = document.getElementById('videoErrorOverlay');
+        if (!errorOverlay) {
+            errorOverlay = document.createElement('div');
+            errorOverlay.id = 'videoErrorOverlay';
+            videoContainer.appendChild(errorOverlay);
+        }
+        
+        errorOverlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+            color: white;
+            background: #1a1a1a;
+            z-index: 10;
+        `;
+        
+        errorOverlay.innerHTML = `
+            <div style="max-width: 500px;">
+                <h3 style="color: #ff6b6b; margin-bottom: 15px;">Video Unavailable</h3>
+                <p style="margin-bottom: 20px; line-height: 1.5;">${message}</p>
+                ${videoData ? `
+                    <div style="background: #2a2a2a; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4>${this.escapeHtml(videoData.title || 'Unknown Title')}</h4>
+                        <p style="color: #aaa; margin: 5px 0;">${this.escapeHtml(videoData.author || 'Unknown Channel')}</p>
+                    </div>
+                ` : ''}
+                <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                    <button onclick="window.liuTube.downloadVideo('${videoId}', '${this.escapeHtml(videoData?.title || 'Video')}')" 
+                            style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Try Download Instead
+                    </button>
+                    <button onclick="window.liuTube.showHomePage()" 
+                            style="padding: 10px 20px; background: #666; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Back to Home
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        videoContainer.style.display = 'block';
+    }
+
     showHomePage() {
-        document.getElementById('videoContainer').style.display = 'none';
-        document.getElementById('homePage').style.display = 'block';
+        // Hide video container and show home page
+        const videoContainer = document.getElementById('videoContainer');
+        const homePage = document.getElementById('homePage');
         const historyPage = document.getElementById('historyPage');
+        
+        videoContainer.style.display = 'none';
+        homePage.style.display = 'block';
         if (historyPage) historyPage.style.display = 'none';
-        document.getElementById('youtubePlayer').src = '';
-        document.getElementById('videoPlayer').src = '';
+        
+        // Clean up video elements properly
+        const youtubePlayer = document.getElementById('youtubePlayer');
+        const videoPlayer = document.getElementById('videoPlayer');
+        const errorOverlay = document.getElementById('videoErrorOverlay');
+        
+        if (youtubePlayer) {
+            youtubePlayer.src = '';
+            youtubePlayer.style.display = 'none';
+        }
+        
+        if (videoPlayer) {
+            videoPlayer.src = '';
+            videoPlayer.pause();
+            videoPlayer.style.display = 'none';
+            // Clear any error handlers
+            videoPlayer.onerror = null;
+        }
+        
+        // Remove error overlay if it exists
+        if (errorOverlay) {
+            errorOverlay.remove();
+        }
+        
+        // Remove loading overlay if it exists
+        const loadingOverlay = document.getElementById('videoLoadingOverlay');
+        if (loadingOverlay) {
+            loadingOverlay.remove();
+        }
+        
+        // Remove fallback button if it exists
+        const fallbackButton = document.getElementById('fallbackButton');
+        if (fallbackButton) {
+            fallbackButton.remove();
+        }
+        
+        // Ensure video container has correct structure
+        if (!youtubePlayer || !videoPlayer) {
+            videoContainer.innerHTML = `
+                <iframe id="youtubePlayer" frameborder="0" allowfullscreen style="width: 100%; height: 100%; border: none;"></iframe>
+                <video id="videoPlayer" controls style="display: none; width: 100%; height: 100%; background: black;"></video>
+            `;
+        }
+        
+        console.log('Returned to home page, video state cleaned');
     }
 
     showHistoryPage() {
@@ -473,12 +744,33 @@ class LiuTube {
         
         try {
             // Search for popular/trending content
-            const results = await window.electronAPI.searchYoutube('trending viral popular 2024', 'video');
+            const results = await window.electronAPI.getTrendingVideos();
             
             if (results.error || !results.videos) {
-                trendingGrid.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 50px;">Failed to load trending videos</div>';
+                console.error('Trending API failed, falling back to search');
+                
+                // Fallback to curated search terms for better results
+                const fallbackQueries = [
+                    'popular videos today',
+                    'most viewed this week', 
+                    'trending now',
+                    'hot videos right now'
+                ];
+                
+                const randomQuery = fallbackQueries[Math.floor(Math.random() * fallbackQueries.length)];
+                const searchResults = await window.electronAPI.searchYoutube(randomQuery, 'video');
+                
+                if (searchResults.error || !searchResults.videos) {
+                    trendingGrid.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 50px;">Failed to load trending videos</div>';
+                    return;
+                }
+                
+                console.log('Using fallback search with query:', randomQuery);
+                this.displayVideosInGrid(searchResults.videos);
                 return;
             }
+            
+            console.log('Loaded', results.videos.length, 'trending videos from API');
 
             this.displayVideosInGrid(results.videos);
             
